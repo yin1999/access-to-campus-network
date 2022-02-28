@@ -1,22 +1,17 @@
 package main
 
 import (
-	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
-	"net/http/cookiejar"
 	"net/url"
 	"regexp"
 	"strings"
 	"time"
-
-	"golang.org/x/text/encoding/simplifiedchinese"
-	"golang.org/x/text/transform"
 )
 
 var (
@@ -40,32 +35,35 @@ type client struct {
 }
 
 func newClient() *client {
-	jar, err := cookiejar.New(nil)
-	if err != nil {
-		log.Fatalln(err)
-	}
 	return &client{
 		Client: http.Client{
-			Jar: jar,
+			Timeout: 15 * time.Second,
+			Transport: &http.Transport{
+				Dial: (&net.Dialer{
+					Timeout:   10 * time.Second,
+					KeepAlive: 30 * time.Second,
+				}).Dial,
+				IdleConnTimeout: 10 * time.Second,
+			},
 		},
 	}
 }
 
 func (c *client) check() error {
-	req, err := http.NewRequest("GET", "http://www.google.cn/generate_204", nil)
+	req, err := newRequestWithCommonHeader(http.MethodGet, "http://www.google.cn/generate_204", nil)
 	if err != nil {
 		return err
 	}
-	req.Header = commonHeader.Clone()
+
 	resp, err := c.Do(req)
 	if err != nil {
 		return err
 	}
 	defer drainBody(resp.Body)
-	if resp.StatusCode == 204 {
+	if resp.StatusCode == http.StatusNoContent { // internet access
 		return nil
 	}
-	data := make([]byte, 3000)
+	data := make([]byte, 1000)
 	var length int
 	length, err = resp.Body.Read(data)
 	if err != nil && err != io.EOF {
@@ -104,14 +102,11 @@ func (c *client) login(username, password string, netAccessType service) error {
 		"&validcode=" + "" +
 		"&passwordEncrypt=" + "false"
 
-	ctx, cc := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cc()
 	var req *http.Request
-	req, err = http.NewRequestWithContext(ctx, http.MethodPost, URL.String(), strings.NewReader(content))
+	req, err = newRequestWithCommonHeader(http.MethodPost, URL.String(), strings.NewReader(content))
 	if err != nil {
 		return err
 	}
-	req.Header = commonHeader.Clone()
 	req.Header.Add("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
 
 	var resp *http.Response
@@ -121,21 +116,27 @@ func (c *client) login(username, password string, netAccessType service) error {
 	}
 	defer drainBody(resp.Body)
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("登录接口返回状态码：%d %s\n", resp.StatusCode, resp.Status)
+		log.Printf("[Info] 登录接口返回状态码：%d %s\n", resp.StatusCode, resp.Status)
 	}
 	data, _ := io.ReadAll(resp.Body)
 	res := &response{}
-	err = json.NewDecoder(bytes.NewBuffer(data)).
-		Decode(res)
+	err = json.Unmarshal(data, res)
 	if err != nil {
-		reader := transform.NewReader(bytes.NewBuffer(data), simplifiedchinese.GBK.NewDecoder())
-		data, _ = io.ReadAll(reader)
 		return fmt.Errorf("登录失败，响应正文：%s", string(data))
 	}
 	if res.Result != "success" {
-		err = fmt.Errorf("login failed: %s", res.Message)
+		err = fmt.Errorf("login failed：%s", res.Message)
 	}
 	return err
+}
+
+func newRequestWithCommonHeader(method string, url string, body io.Reader) (req *http.Request, err error) {
+	req, err = http.NewRequest(method, url, body)
+	if err != nil {
+		return
+	}
+	req.Header = commonHeader.Clone()
+	return
 }
 
 func doubleEncodeURIComponent(raw string) string {

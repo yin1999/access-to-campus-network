@@ -32,10 +32,10 @@ exit:
 			}
 			log.Printf("[Error] 登录校园网失败，err: %s\n", err.Error())
 		case nil:
-			log.Print("[Info] 已连接到互联网")
+			log.Print("[Info] 已连接到互联网\n")
 			break exit
 		default:
-			log.Println(err.Error())
+			log.Printf("[Error] 登录失败，err: %s\n", err.Error())
 		}
 		if count == 0 {
 			exit(2)
