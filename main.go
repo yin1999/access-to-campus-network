@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -38,21 +37,12 @@ exit:
 			log.Printf("[Error] 登录失败，err: %s\n", err.Error())
 		}
 		if count == 0 {
-			exit(2)
+			os.Exit(2)
 		}
 		count--
 		log.Println("[Info] 10秒后重试...")
 		time.Sleep(10 * time.Second)
 	}
-	exit(0)
-}
-
-func exit(code int) {
-	if len(os.Args) == 1 {
-		fmt.Println("5秒后自动关闭窗口...")
-		time.Sleep(5 * time.Second)
-	}
-	os.Exit(code)
 }
 
 func init() {
@@ -62,7 +52,7 @@ func init() {
 		cfg, err := ini.Load(file)
 		if err != nil {
 			log.Printf("[Error] 加载配置文件失败, err: %s\n", err.Error())
-			exit(1)
+			os.Exit(1)
 		}
 		sec := cfg.Section("")
 		username = sec.Key("user").String()
@@ -82,7 +72,7 @@ cmcc        中国移动(CMCC NET)`)
 	}
 	if username == "" || password == "" {
 		log.Printf("[Error] 用户名或密码为空")
-		exit(1)
+		os.Exit(1)
 	}
 	switch net {
 	case "out-campus":
@@ -91,6 +81,6 @@ cmcc        中国移动(CMCC NET)`)
 		networkType = cmcc
 	default:
 		log.Printf("[Error] -net %s 不支持的网络提供商\n", net)
-		exit(1)
+		os.Exit(1)
 	}
 }
